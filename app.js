@@ -74,6 +74,7 @@ app.use(cors({
       'http://localhost:3001',
       'https://kliqcrm.com',
       'http://kliqcrm.com',
+      'https://benevolent-alfajores-4b3904.netlify.app',
     ];
     
     if (allowedOrigins.indexOf(origin) !== -1) {
