@@ -70,10 +70,10 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
-      'http://localhost:8800',
       'http://localhost:3000',
-      'http://localhost:3001', 
-      
+      'http://localhost:3001',
+      'https://kliqcrm.com',
+      'http://kliqcrm.com',
     ];
     
     if (allowedOrigins.indexOf(origin) !== -1) {
