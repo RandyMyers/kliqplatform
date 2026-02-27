@@ -41,12 +41,12 @@ async function getWebhookSecret() {
  * User navigates to the returned URL to pay. We manage plans/subscriptions ourselves;
  * this is a one-time payment for the chosen plan/currency. On success we get checkout.session.completed.
  */
-async function createPaymentLink({ userId, planId, currency, successUrl }) {
+async function createPaymentLink({ userId, planId, currency, interval = 'month', successUrl }) {
   const stripe = await getStripe();
   if (!stripe) throw new Error('Stripe is not configured');
   if (!CURRENCIES.includes(currency)) throw new Error('Invalid currency');
   const plan = getPlanById(planId);
-  const price = getPriceForPlan(planId, currency);
+  const price = getPriceForPlan(planId, currency, interval);
   if (!plan || !price || plan.id === 'free_trial') throw new Error('Invalid plan or currency');
   const paymentLink = await stripe.paymentLinks.create({
     line_items: [
@@ -62,7 +62,7 @@ async function createPaymentLink({ userId, planId, currency, successUrl }) {
         quantity: 1,
       },
     ],
-    metadata: { userId: String(userId), planId, currency },
+    metadata: { userId: String(userId), planId, currency, interval },
     after_completion: {
       type: 'redirect',
       redirect: { url: successUrl },
@@ -72,8 +72,8 @@ async function createPaymentLink({ userId, planId, currency, successUrl }) {
 }
 
 /** Alias for backward compatibility; creates a payment link (not a Checkout Session). */
-async function createCheckoutSession({ userId, userEmail, planId, currency, successUrl, cancelUrl }) {
-  return createPaymentLink({ userId, planId, currency, successUrl: successUrl || cancelUrl });
+async function createCheckoutSession({ userId, userEmail, planId, currency, interval = 'month', successUrl, cancelUrl }) {
+  return createPaymentLink({ userId, planId, currency, interval, successUrl: successUrl || cancelUrl });
 }
 
 async function createPortalSession({ customerId, returnUrl }) {

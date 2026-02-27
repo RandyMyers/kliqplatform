@@ -8,7 +8,6 @@ const path = require('path');
 const dotenv = require('dotenv'); 
 
 
-
 const fileUpload = require('express-fileupload');
 const receiverEvent = require('./helper/receiverEvent');
 //const currencyEvent = require('./helper/exchangeRateEvent')
@@ -38,6 +37,8 @@ const webhookRoutes = require('./routes/webhookRoutes');
 const inviteRoutes = require('./routes/inviteRoutes');
 const integrationRoutes = require('./routes/integrationRoutes');
 const marketingRoutes = require('./routes/marketingRoutes');
+const ratesRoutes = require('./routes/ratesRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 
@@ -180,6 +181,8 @@ app.use('/api', sitemapRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/marketing', marketingRoutes);
+app.use('/api/rates', ratesRoutes);
+app.use('/api/public', publicRoutes);
 
 //Start the cron job for receiver emails
 receiverEvent.scheduleEmailSync();

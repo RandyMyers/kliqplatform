@@ -3,7 +3,7 @@ const Subscription = require('../models/Subscription');
 const Payment = require('../models/Payment');
 const BankAccount = require('../models/BankAccount');
 const Plan = require('../models/Plan');
-const { getPlanById, PLANS, getPaidPlans, getPriceForPlan, CURRENCIES } = require('../config/plans');
+const { getPlanById, PLANS, getPaidPlans, getPriceForPlan, CURRENCIES, INTERVALS } = require('../config/plans');
 
 async function resolvePlanConfig(planId) {
   const fromDb = await Plan.findOne({ $or: [{ slug: planId }, { _id: planId }], active: true }).lean();
@@ -20,6 +20,15 @@ async function resolvePlanConfig(planId) {
     };
   }
   return getPlanById(planId);
+}
+
+/** Get price for plan/currency/interval. Supports DB plan or config. */
+function getPriceForPlanInterval(planConfig, currency, interval = 'month') {
+  if (!planConfig?.prices?.[currency]) return getPriceForPlan(planConfig?.id, currency, interval);
+  const pc = planConfig.prices[currency];
+  const amt = pc[interval] ?? pc.month ?? pc.amount;
+  if (amt == null) return null;
+  return { amount: amt, currency: pc.currency || currency };
 }
 
 async function getPlan(req, res) {
@@ -125,17 +134,16 @@ async function listPlans(req, res) {
 
 async function getBankDetails(req, res) {
   try {
-    const { currency } = req.query;
+    const { currency, planId, interval = 'month' } = req.query;
     if (!currency || !CURRENCIES.includes(currency)) {
       return res.status(400).json({ message: 'currency required (USD, EUR, or GBP)' });
     }
-    const { planId } = req.query;
     const account = await BankAccount.findOne({ currency, active: true });
     if (!account) return res.status(404).json({ message: 'Bank details not configured for this currency' });
     let price = null;
     if (planId) {
       const planConfig = await resolvePlanConfig(planId);
-      price = planConfig?.prices?.[currency] || getPriceForPlan(planId, currency);
+      price = getPriceForPlanInterval(planConfig, currency, interval);
     }
     const amountMajor = price ? (price.amount / 100).toFixed(2) : null;
     res.json({
@@ -157,15 +165,15 @@ async function getBankDetails(req, res) {
 
 async function bankTransferRequest(req, res) {
   try {
-    const { planId, currency } = req.body;
+    const { planId, currency, interval = 'month' } = req.body;
     if (!planId || !currency || !CURRENCIES.includes(currency)) {
       return res.status(400).json({ message: 'planId and currency (USD, EUR, GBP) required' });
     }
     const plan = await resolvePlanConfig(planId);
-    if (!plan || !plan.prices || !plan.prices[currency]) {
+    const price = getPriceForPlanInterval(plan, currency, interval);
+    if (!plan || !price) {
       return res.status(400).json({ message: 'Invalid plan or currency' });
     }
-    const price = plan.prices[currency];
     const reference = `StoreHub-${req.user._id}-${Date.now()}`;
     const payment = await Payment.create({
       userId: req.user._id,
@@ -174,7 +182,7 @@ async function bankTransferRequest(req, res) {
       status: 'pending',
       paymentMethod: 'bank_transfer',
       externalId: reference,
-      metadata: { planId: plan.id, reference },
+      metadata: { planId: plan.id, interval, reference },
     });
     const account = await BankAccount.findOne({ currency, active: true });
     if (!account) return res.status(503).json({ message: 'Bank transfer not available for this currency' });
@@ -233,7 +241,7 @@ async function bankTransferProof(req, res) {
 
 async function createCheckoutSession(req, res) {
   try {
-    const { planId, currency } = req.body;
+    const { planId, currency, interval = 'month' } = req.body;
     if (!planId || !currency) return res.status(400).json({ message: 'planId and currency required' });
     const user = await User.findById(req.user._id).select('email');
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -245,6 +253,7 @@ async function createCheckoutSession(req, res) {
       userEmail: user.email,
       planId,
       currency,
+      interval,
       successUrl: `${base}/billing?success=true`,
       cancelUrl: `${base}/billing?canceled=true`,
     });
@@ -272,7 +281,7 @@ async function createPortalSession(req, res) {
 
 async function createFlutterwavePayment(req, res) {
   try {
-    const { planId, currency } = req.body;
+    const { planId, currency, interval = 'month' } = req.body;
     if (!planId || !currency) return res.status(400).json({ message: 'planId and currency required' });
     const user = await User.findById(req.user._id).select('email fullName');
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -283,6 +292,7 @@ async function createFlutterwavePayment(req, res) {
       userId: req.user._id,
       planId,
       currency,
+      interval,
       customerEmail: user.email,
       customerName: user.fullName,
       redirectUrl,

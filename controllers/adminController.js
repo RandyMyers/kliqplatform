@@ -212,10 +212,16 @@ async function getStats(req, res) {
       Subscription.aggregate([{ $match: { status: 'active' } }, { $group: { _id: '$plan', count: { $sum: 1 } } }]),
       Payment.countDocuments({ status: 'pending', paymentMethod: 'bank_transfer' }),
       SupportTicket.countDocuments({ status: { $in: ['open', 'in-progress'] } }),
-      Payment.aggregate([{ $match: { status: 'succeeded' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Payment.aggregate([{ $match: { status: 'succeeded' } }, { $group: { _id: '$currency', total: { $sum: '$amount' } } }]),
     ]);
 
     const plansMap = (subscriptionsByPlan || []).reduce((acc, p) => { acc[p._id] = p.count; return acc; }, {});
+    const revenueByCurrency = (totalPaymentsSum || []).reduce((acc, r) => {
+      const cur = r._id || 'USD';
+      acc[cur] = (acc[cur] || 0) + (r.total || 0);
+      return acc;
+    }, {});
+    const totalRevenue = Object.values(revenueByCurrency).reduce((s, v) => s + v, 0);
 
     res.json({
       totalUsers: totalUsers || 0,
@@ -224,7 +230,8 @@ async function getStats(req, res) {
       subscriptionsByPlan: plansMap,
       pendingPaymentsCount: pendingPaymentsCount || 0,
       openTicketsCount: openTicketsCount || 0,
-      totalRevenue: (totalPaymentsSum && totalPaymentsSum[0] && totalPaymentsSum[0].total) ? totalPaymentsSum[0].total : 0,
+      totalRevenue,
+      revenueByCurrency,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -245,19 +252,25 @@ async function getAnalyticsTrends(req, res) {
       ]),
       Payment.aggregate([
         { $match: { status: 'succeeded', createdAt: { $gte: start } } },
-        { $group: { _id: { $dateToString: { date: '$createdAt', format: '%Y-%m-%d' } }, total: { $sum: '$amount' } } },
+        { $group: { _id: { date: { $dateToString: { date: '$createdAt', format: '%Y-%m-%d' } }, currency: '$currency' }, total: { $sum: '$amount' } } },
       ]),
     ]);
 
     const signupsByDate = (signupsAgg || []).reduce((acc, x) => { acc[x._id] = x.count; return acc; }, {});
-    const revenueByDate = (revenueAgg || []).reduce((acc, x) => { acc[x._id] = x.total; return acc; }, {});
+    const revenueByDateAndCurrency = (revenueAgg || []).reduce((acc, x) => {
+      const d = x._id?.date || x._id;
+      const cur = x._id?.currency || 'USD';
+      if (!acc[d]) acc[d] = {};
+      acc[d][cur] = (acc[d][cur] || 0) + (x.total || 0);
+      return acc;
+    }, {});
 
     const signupsByDay = [];
     const revenueByDay = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().slice(0, 10);
       signupsByDay.push({ date: dateStr, count: signupsByDate[dateStr] || 0 });
-      revenueByDay.push({ date: dateStr, total: revenueByDate[dateStr] || 0 });
+      revenueByDay.push({ date: dateStr, byCurrency: revenueByDateAndCurrency[dateStr] || {} });
     }
 
     res.json({ signupsByDay, revenueByDay });

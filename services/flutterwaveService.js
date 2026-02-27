@@ -32,12 +32,12 @@ async function getCredentials() {
  * Returns the payment link URL for the user to complete payment.
  * We manage plans/subscriptions ourselves; this is a one-time payment.
  */
-async function initializePayment({ userId, planId, currency, customerEmail, customerName, redirectUrl }) {
+async function initializePayment({ userId, planId, currency, interval = 'month', customerEmail, customerName, redirectUrl }) {
   const creds = await getCredentials();
   if (!creds || !creds.secretKey) throw new Error('Flutterwave is not configured');
   if (!CURRENCIES.includes(currency)) throw new Error('Invalid currency');
   const plan = getPlanById(planId);
-  const price = getPriceForPlan(planId, currency);
+  const price = getPriceForPlan(planId, currency, interval);
   if (!plan || !price || plan.id === 'free_trial') throw new Error('Invalid plan or currency');
 
   const txRef = `storehub-${userId}-${Date.now()}`;
@@ -56,7 +56,7 @@ async function initializePayment({ userId, planId, currency, customerEmail, cust
       title: 'StoreHub',
       description: `${plan.name} – ${currency} ${amount}`,
     },
-    meta: { userId: String(userId), planId, currency },
+    meta: { userId: String(userId), planId, currency, interval },
   };
 
   const res = await axios.post(`${FLW_BASE}/payments`, payload, {
